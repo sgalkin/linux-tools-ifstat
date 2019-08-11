@@ -3,9 +3,14 @@
 #include <unistd.h>
 #include <assert.h>
 #include <ifaddrs.h>
+#include <fcntl.h>
+#include <string.h>
 
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/timerfd.h>
 #include <sys/epoll.h>
+#include <sys/inotify.h>
 
 #include <net/if.h>
 
@@ -24,7 +29,7 @@ typedef void(*timer_callback)();
 int timer_handler(int timer, timer_callback callback) {
     assert(timer != -1);
     assert(callback != NULL);
-    
+
     struct timespec ts;
     CHECK_RESULT(clock_gettime(CLOCK_MONOTONIC, &ts),
                  "timer_handler: clock_gettime", return -1);
@@ -37,9 +42,47 @@ int timer_handler(int timer, timer_callback callback) {
                 "Unepexcted content while reading timer: "
                 "read %d bytes: %llu\n", result, data);
     } else {
+        struct timespec b, e;
+        CHECK_RESULT(clock_gettime(CLOCK_MONOTONIC, &b), "clock_gettime", return -1);
         callback();
+        CHECK_RESULT(clock_gettime(CLOCK_MONOTONIC, &e), "clock_gettime", return -1);
+        time_t sec = e.tv_sec - b.tv_sec;
+        long nsec = e.tv_nsec - b.tv_nsec;
+        if(nsec < 0) {
+            nsec += 1000000000;
+            sec -= 1;
+        }
+        printf("took: %ld.%09ld\n", sec, nsec);
     }
     return 0;
+}
+
+void parse_proc_stat() {
+    int fd = open("/proc/stat", O_CLOEXEC | O_NONBLOCK, O_RDONLY);
+    CHECK_RESULT(fd, "open", abort());
+    char buf[4096];
+    ssize_t size = read(fd, &buf, sizeof(buf));
+    CHECK_RESULT(size, "read", abort());
+    buf[size] = 0;
+    for(char *stash, *token = strtok_r(buf, "\n", &stash);
+        token != NULL;
+        token = strtok_r(NULL, "\n", &stash)) {
+        if(strncmp(token, "cpu ", strlen("cpu ")) == 0) {
+            long user = 0, nice = 0, system = 0, idle = 0,
+                 iowait = 0, irq = 0, softirq = 0,
+                 steal = 0, guest = 0, guest_nice = 0;
+            sscanf(token, "cpu  %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld",
+                  &user, &nice, &system, &idle,
+                  &iowait, &irq, &softirq,
+                  &steal, &guest, &guest_nice);
+            /* printf("step: %ld (%ld)\n", */
+            /*        user + nice + system + idle + */
+            /*        iowait + irq + softirq + */
+            /*        steal + guest + guest_nice, */
+            /*        sysconf(_SC_CLK_TCK)); */
+        }
+    }
+    CHECK_RESULT(close(fd), "close", abort());
 }
 
 void gather_if_stats() {
@@ -106,6 +149,7 @@ int main() {
     CHECK_RESULT(epoll, "epoll_create1", goto EPOLL_CREATE_CLEANUP);
     assert(epoll != -1);
     
+    
     int timer = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
     CHECK_RESULT(timer, "timerfd_create", goto TIMER_CLEANUP);
     assert(timer != -1);
@@ -134,7 +178,7 @@ int main() {
         CHECK_RESULT(nfds, "epoll_wait", goto EPOLL_WAIT_CLEANUP);
         for(int i = 0; i < nfds; ++i) {
             if(events[i].data.fd == timer_event.data.fd) {
-                CHECK_RESULT(timer_handler(timer_event.data.fd, &gather_if_stats),
+                CHECK_RESULT(timer_handler(timer_event.data.fd, &parse_proc_stat),
                              "timer_handler", goto EPOLL_WAIT_CLEANUP);
             }
         }
@@ -144,7 +188,7 @@ EPOLL_WAIT_CLEANUP:
 
 TIMER_CLEANUP:
     CHECK_RESULT(close(timer), "close: timer", abort());
-    
+
 EPOLL_CREATE_CLEANUP:
     CHECK_RESULT(close(epoll), "close: epoll", abort());
     return 0;
