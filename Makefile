@@ -2,6 +2,7 @@ BINARY = ifstat
 
 SOURCES = \
 	ifstat.c \
+	proc_stat.c \
 
 CFLAGS += \
 	-Wall \
@@ -11,10 +12,10 @@ CFLAGS += \
 	-g \
 
 all: ${BINARY}
-	./$^
+	./$<
 
 ${BINARY}: ${SOURCES:.c=.o}
-	${LINK.c} -o $@ ${LDFLAGS} $<
+	${LINK.c} -o $@ ${LDFLAGS} $^
 
 clean:
 	@-rm ${BINARY} ${SOURCES:.c=.o}

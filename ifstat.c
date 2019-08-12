@@ -1,3 +1,5 @@
+#include "proc_stat.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -57,6 +59,11 @@ int timer_handler(int timer, timer_callback callback) {
     return 0;
 }
 
+
+static struct cpu_stats data[2];
+static struct cpu_stats *base = NULL;
+static struct cpu_stats *current = data;
+
 void parse_proc_stat() {
     int fd = open("/proc/stat", O_CLOEXEC | O_NONBLOCK, O_RDONLY);
     CHECK_RESULT(fd, "open", abort());
@@ -68,18 +75,20 @@ void parse_proc_stat() {
         token != NULL;
         token = strtok_r(NULL, "\n", &stash)) {
         if(strncmp(token, "cpu ", strlen("cpu ")) == 0) {
-            long user = 0, nice = 0, system = 0, idle = 0,
-                 iowait = 0, irq = 0, softirq = 0,
-                 steal = 0, guest = 0, guest_nice = 0;
-            sscanf(token, "cpu  %ld %ld %ld %ld %ld %ld %ld %ld %ld %ld",
-                  &user, &nice, &system, &idle,
-                  &iowait, &irq, &softirq,
-                  &steal, &guest, &guest_nice);
-            /* printf("step: %ld (%ld)\n", */
-            /*        user + nice + system + idle + */
-            /*        iowait + irq + softirq + */
-            /*        steal + guest + guest_nice, */
-            /*        sysconf(_SC_CLK_TCK)); */
+            CHECK_RESULT(parse_cpu_stats(token, current), "parse_cpu_stats", abort());
+            if(base == NULL) {
+                base = current;
+                current = data + 1;
+            } else {
+                substract_cpu_stats(base, current);
+                scale_cpu_stats(base, -1, 1);
+                percentage_cpu_stats(base);
+                struct cpu_stats *tmp = current;
+                current = base;
+                base = tmp;
+                
+                dump_cpu_stats(current);
+            }
         }
     }
     CHECK_RESULT(close(fd), "close", abort());
