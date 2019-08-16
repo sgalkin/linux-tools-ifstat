@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <limits.h>
+#include <inttypes.h>
 #include <assert.h>
 
 struct cpu_stat {
@@ -176,7 +177,10 @@ int parse_stat(char *s, struct proc_stat *stat) {
 void dump_cpu_stat(const char* tag, const struct cpu_stat *stat) {
     assert(tag != NULL);
     assert(stat != NULL);
-    printf("%s %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu\n",
+    printf("%s %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64
+           " %" PRIu64
+           " %" PRIu64 " %" PRIu64
+           " %" PRIu64 " %" PRIu64 " %" PRIu64 "\n",
            tag,
            stat->user, stat->nice, stat->system, stat->idle,
            stat->iowait,

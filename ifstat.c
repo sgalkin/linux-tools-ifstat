@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <assert.h>
 #include <ifaddrs.h>
+#include <inttypes.h>
 #include <fcntl.h>
 #include <string.h>
 
@@ -42,7 +43,7 @@ int timer_handler(int timer, timer_callback callback) {
     if(result != sizeof(data) || data != 1) {
         fprintf(stderr,
                 "Unepexcted content while reading timer: "
-                "read %d bytes: %llu\n", result, data);
+                "read %d bytes: %" PRIu64 "\n", result, data);
     } else {
         struct timespec b, e;
         CHECK_RESULT(clock_gettime(CLOCK_MONOTONIC, &b), "clock_gettime", return -1);
